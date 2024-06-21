@@ -26,8 +26,8 @@ import (
 	"net"
 	"os"
 
+	yaml "github.com/iamshivamnanda/yaml/v3"
 	. "gopkg.in/check.v1"
-	"gopkg.in/yaml.v3"
 )
 
 var marshalIntTest = 123

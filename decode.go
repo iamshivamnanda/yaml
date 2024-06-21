@@ -481,7 +481,7 @@ func allowedAliasRatio(decodeCount int) float64 {
 	}
 }
 
-func (d *decoder) unmarshal(n *Node, out reflect.Value) (good bool) {
+func (d *decoder) unmarshal(node *Node, out reflect.Value) (good bool) {
 	d.decodeCount++
 	if d.aliasDepth > 0 {
 		d.aliasCount++
@@ -490,34 +490,46 @@ func (d *decoder) unmarshal(n *Node, out reflect.Value) (good bool) {
 		failf("document contains excessive aliasing")
 	}
 	if out.Type() == nodeType {
-		out.Set(reflect.ValueOf(n).Elem())
+		out.Set(reflect.ValueOf(node).Elem())
 		return true
 	}
-	switch n.Kind {
+	switch node.Kind {
 	case DocumentNode:
-		return d.document(n, out)
+		return d.document(node, out)
 	case AliasNode:
-		return d.alias(n, out)
+		return d.alias(node, out)
 	}
-	out, unmarshaled, good := d.prepare(n, out)
+	out, unmarshaled, good := d.prepare(node, out)
 	if unmarshaled {
 		return good
 	}
-	switch n.Kind {
+	switch node.Kind {
 	case ScalarNode:
-		good = d.scalar(n, out)
+		good = d.scalar(node, out)
 	case MappingNode:
-		good = d.mapping(n, out)
+		good = d.mapping(node, out)
 	case SequenceNode:
-		good = d.sequence(n, out)
+		good = d.sequence(node, out)
 	case 0:
-		if n.IsZero() {
+		if node.IsZero() {
 			return d.null(out)
 		}
 		fallthrough
 	default:
-		failf("cannot decode node with unknown kind %d", n.Kind)
+		failf("cannot decode node with unknown kind %d", node.Kind)
 	}
+
+	// Perform custom validation based on struct tags
+	if good {
+		errors := ValidateStruct(out, node)
+		if len(errors) > 0 {
+			for _, e := range errors {
+				d.terrors = append(d.terrors, e.Error())
+			}
+			return false
+		}
+	}
+
 	return good
 }
 
