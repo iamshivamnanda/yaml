@@ -23,6 +23,7 @@ import (
 	"math"
 	"reflect"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -36,6 +37,21 @@ type parser struct {
 	anchors  map[string]*Node
 	doneInit bool
 	textless bool
+}
+
+// YAMLValue is a generic struct that holds both the typed value and the YAML Node
+type YAMLValue[T any] struct {
+	Value T
+	Node  *Node
+}
+
+// Helper function to check if a type is YAMLValue or YAMLValue[T]
+func isYAMLValueType(t reflect.Type) bool {
+	if t.Kind() != reflect.Struct {
+		return false
+	}
+
+	return strings.Contains(t.String(), "YAMLValue")
 }
 
 func newParser(b []byte) *parser {
@@ -489,20 +505,53 @@ func (d *decoder) unmarshal(node *Node, out reflect.Value) (good bool) {
 	if d.aliasCount > 100 && d.decodeCount > 1000 && float64(d.aliasCount)/float64(d.decodeCount) > allowedAliasRatio(d.decodeCount) {
 		failf("document contains excessive aliasing")
 	}
-	if out.Type() == nodeType {
-		out.Set(reflect.ValueOf(node).Elem())
+
+	// Check if the out value is of YAMLValue type
+	if isYAMLValueType(out.Type()) {
+		valueField := out.FieldByName("Value")
+		nodeField := out.FieldByName("Node")
+
+		if !valueField.IsValid() || !nodeField.IsValid() {
+			failf("YAMLValue struct is missing Value or Node field")
+		}
+
+		// Create a new value to unmarshal into
+		innerValue := reflect.New(valueField.Type()).Elem()
+		good = d.unmarshal(node, innerValue)
+		if good {
+			// Set the Value and Node fields of YAMLValue
+			valueField.Set(innerValue)
+			nodeField.Set(reflect.ValueOf(node))
+			// Validate the inner value
+			errors := ValidateStruct(innerValue, node)
+			if len(errors) > 0 {
+				for _, e := range errors {
+					d.terrors = append(d.terrors, e.Error())
+				}
+				return false
+			}
+		}
+		return good
+	}
+
+	// Check if out type is *yaml.Node
+	if out.Type() == reflect.TypeOf(&Node{}) {
+		out.Set(reflect.ValueOf(node))
 		return true
 	}
+
 	switch node.Kind {
 	case DocumentNode:
 		return d.document(node, out)
 	case AliasNode:
 		return d.alias(node, out)
 	}
+
 	out, unmarshaled, good := d.prepare(node, out)
 	if unmarshaled {
 		return good
 	}
+
 	switch node.Kind {
 	case ScalarNode:
 		good = d.scalar(node, out)

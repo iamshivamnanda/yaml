@@ -13,6 +13,7 @@ var validators = make(map[string]Validator)
 
 // validateStruct performs validation based on struct tags
 func ValidateStruct(out reflect.Value, node *Node) []error {
+
 	var errors []error
 	t := out.Type()
 	if t.Kind() != reflect.Struct {
@@ -40,7 +41,11 @@ func ValidateStruct(out reflect.Value, node *Node) []error {
 				yamlTag = field.Name
 			}
 			if childNode, exists := fieldMap[yamlTag]; exists {
-				errors = append(errors, applyValidationRules(out.Field(i), tag, yamlTag, childNode)...)
+				fieldValue := out.Field(i)
+				if isYAMLValueType(field.Type) {
+					fieldValue = fieldValue.FieldByName("Value")
+				}
+				errors = append(errors, applyValidationRules(fieldValue, tag, yamlTag, childNode)...)
 			} else {
 				if tagContainsRequired(tag) {
 					errors = append(errors, CustomError{
