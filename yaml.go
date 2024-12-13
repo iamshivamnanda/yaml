@@ -154,6 +154,7 @@ func (n *Node) Decode(v interface{}) (err error) {
 func unmarshal(in []byte, out interface{}, strict bool) (err error) {
 	defer handleErr(&err)
 	d := newDecoder()
+	d.knownFields = true
 	p := newParser(in)
 	defer p.destroy()
 	node := p.parse()
